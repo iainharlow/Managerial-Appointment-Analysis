@@ -1,0 +1,319 @@
+---
+    pdf_document: default
+author: "Iain Harlow"
+date: "06/21/2015"
+output:
+    html_document: null
+keep_md: yes
+pdf_document: default
+title: 'Managerial Appointment Effects in Soccer'
+---
+
+
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Blog")
+
+library(dplyr)
+library(lubridate)
+library(devtools)
+library(ggplot2)
+library(stringr)
+```
+
+Collate a dataset of results:
+
+```{r}
+# Use English results (n = 200k) for exploratory analyses
+install_github('jalapic/engsoccerdata', username = "jalapic")
+library(engsoccerdata)
+
+# Get postwar results, trim away columns containing unnecessary data
+lge <- engsoccerdata2[,c(1,2,3,4,6,7,9)]
+names(lge) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+lge$neutral <- 0
+
+# FA Cup:
+fcup <- facup[,c(1,2,3,4,6,7,9)]
+names(fcup) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+fcup$tier <- "fcup"
+tmpvec <- facup$neutral
+fcup$neutral <- 0
+fcup$neutral[tmpvec=="yes"] <- 1
+
+# League Cup:
+lcup <- read.csv("League Cup.csv",
+                 header = TRUE,
+                 stringsAsFactors = FALSE,
+                 colClasses = c("Date"="character",
+                                "Hgoal"="integer",
+                                "Vgoal"="integer"))
+lcup <- lcup[,c(3,2,4,7,5,6,1,8)]
+names(lcup) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+lcup$tier <- "lcup"
+lcup$date <- str_sub(lcup$date, end = 10)
+lcup$home <- str_replace_all(lcup$home, "[[:space:]]+", " ")
+lcup$visitor <- str_replace_all(lcup$visitor, "[[:space:]]+", " ")
+
+# Playoffs:
+po <- playoffs[,c(1,2,3,4,6,7,9)]
+names(po) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+po$tier <- "po"
+tmpvec <- playoffs$neutral
+po$neutral <- 0
+po$neutral[tmpvec=="yes"] <- 1
+
+matches <- tbl_df(rbind(lge,fcup,lcup,po))
+matches <- matches[complete.cases(matches),]
+matches$date <- ymd(matches$date)
+
+oldnames <- c(" and ",
+              "^AFC ",
+              "Swansea Town",
+              "^Orient",
+              "Swindon Town",
+              "Hull City",
+              "Stevenage Borough",
+              "Aldershot Town",
+              "^Yeovil.*",
+              "Sheffield Wed\\.",
+              "Wolverhampton W\\.",
+              "Nottingham F\\.",
+              "Chester City",
+              "Hartlepool United",
+              "Macclesfield Town",
+              "Cheltenham Town",
+              "Blacburn")
+
+newnames <- c(" & ",
+              "",
+              "Swansea City",
+              "Leyton Orient",
+              "Swindon",
+              "Hull",
+              "Stevenage",
+              "Aldershot",
+              "Yeovil",
+              "Sheffield Wednesday",
+              "Wolverhampton Wanderers",
+              "Nottingham Forest",
+              "Chester",
+              "Hartlepool",
+              "Macclesfield",
+              "Cheltenham",
+              "Blackburn")
+
+for (i in 1:length(newnames)) {
+    matches$home <- str_replace_all(matches$home, 
+                                oldnames[i],
+                                newnames[i])
+    matches$visitor <- str_replace_all(matches$visitor, 
+                                    oldnames[i],
+                                    newnames[i])
+}
+
+
+
+
+# Manager data for English league clubs since ~1900 scraped from www.leaguemanagers.com:
+managers <- read.csv("engmanagers.csv")[,1:6]
+managers$start <- mdy(managers$start)
+managers$end <- mdy(managers$end)
+managers <- managers[complete.cases(managers),]
+
+# Set up for mle:
+maxiter <- 30
+teamstart <- data.frame(Team="Arsenal",a=1,d=1)
+matches$perf<-0
+matches$hperf<-0
+matches$vperf<-0
+
+# Match performance rating function:
+mpe <- function(hg,vg,he,ve){
+    sqrt(hg)-sqrt(he)+sqrt(ve)-sqrt(vg)
+}
+
+# ------
+
+# MLE loop, find team strengths for every year from 1946; use this to evaluate performance in each match:
+
+for (s in 1990:2013) {
+            # Calculate weights and discard games with w=0:
+            sw <- as.integer(matches$season>=s-1&matches$season<=s+1)+as.integer(matches$season==s)
+            dw <- 1 #reserved for decay function, for predictive analyses
+            matches$W <- sw*dw
+            RES <- matches[matches$W>0,]
+            
+            # Non-league sides (<5 matches) get grouped together:
+            Teamcount <- data.frame(table(c(RES$home,RES$visitor)))
+            Teamcount$Var1 <- as.character(Teamcount$Var1)
+            Teamcount$Var1[Teamcount$Freq<5] <- "ZZZ"
+            TEAMS <- sort(unique(Teamcount$Var1))
+            RES$home[!RES$home %in% TEAMS] <- "ZZZ"
+            RES$visitor[!RES$visitor %in% TEAMS] <- "ZZZ"
+            RES<-RES[,c("neutral","home","visitor","hgoal","vgoal","W")]
+            
+            # Get average goals and average home advantage
+            Gmean <- mean(c(RES$hgoal,RES$vgoal))
+            Hadvmean <- (sum(RES$hgoal[RES$neutral==0])/sum(RES$vgoal[RES$neutral==0]))^0.5
+            
+            # Add dummy games for model stability
+            RESEXTRA <- RES[1:(length(TEAMS)-1),]
+            RESEXTRA$home <- head(TEAMS,-1)
+            RESEXTRA$visitor <- head(TEAMS,-1)
+            RESEXTRA[,c("hgoal","vgoal","neutral","W")] <- 1
+            RESCALC <- rbind(RES,RESEXTRA)
+            RESCALC$home <- as.integer(factor(RESCALC$home,levels=TEAMS))
+            RESCALC$visitor <- as.integer(factor(RESCALC$visitor,levels=TEAMS))
+            
+            # Set global (data) variables for the mle function
+            H <- RESCALC$hgoal
+            A <- RESCALC$vgoal
+            HT <- RESCALC$home
+            AT <- RESCALC$visitor
+            home <- 1-RESCALC$neutral
+            w <- RESCALC$W
+
+            attstart <- rep(1,length(TEAMS))
+            defstart <- rep(1,length(TEAMS))
+            attstart[is.element(TEAMS,teamstart$Team)] <- teamstart[is.element(teamstart$Team,TEAMS),2]
+            defstart[is.element(TEAMS,teamstart$Team)] <- teamstart[is.element(teamstart$Team,TEAMS),3]
+            paramstart <- c(Gmean,Hadvmean,attstart,defstart)
+            
+            # Likelihood function to minimise
+            mtmp <- function(tparams){
+                mgls <- tparams[1]
+                hadv <- tparams[2]
+                Att <- tparams[3:(length(tparams)/2+1)]
+                Def <- tparams[(length(tparams)/2+2):length(tparams)]
+                sum(((-log(dpois(H,mgls*Att[HT]*Def[AT]*(hadv^home))))+(-log(dpois(A,mgls*Att[AT]*Def[HT]/(hadv^home)))))*w)
+            }
+            
+            m <- nlm(mtmp, paramstart, gradtol=1e-4, steptol=1e-4, iterlim = maxiter)
+            teamstart <- data.frame(Team=as.character(TEAMS),a=m$estimate[3:(length(m$estimate)/2+1)],d=m$estimate[(length(m$estimate)/2+2):length(m$estimate)])
+            
+            #Calculate performance for each team in each match, based on estimated team strengths
+            Att <- m$estimate[3:(length(m$estimate)/2+1)]
+            Def <- m$estimate[(length(m$estimate)/2+2):length(m$estimate)]
+            RES$home <- as.integer(factor(RES$home,levels=TEAMS))
+            RES$visitor <- as.integer(factor(RES$visitor,levels=TEAMS))
+            SRES <- RES[RES$W==2,]
+            hexp <- Gmean*Att[SRES$home]*Def[SRES$visitor]*(Hadvmean^(1-SRES$neutral))
+            vexp <- Gmean*Att[SRES$visitor]*Def[SRES$home]/(Hadvmean^(1-SRES$neutral))
+            hdefexp <- Gmean*Att[SRES$visitor]/(Hadvmean^(1-SRES$neutral))
+            hattexp <- Gmean*Def[SRES$visitor]*(Hadvmean^(1-SRES$neutral))
+            vdefexp <- Gmean*Att[SRES$home]*(Hadvmean^(1-SRES$neutral))
+            vattexp <- Gmean*Def[SRES$home]/(Hadvmean^(1-SRES$neutral))
+
+            matches$perf[matches$season==s] <- mpe(SRES$hgoal,SRES$vgoal,hexp,vexp)
+            matches$hperf[matches$season==s] <- mpe(SRES$hgoal,SRES$vgoal,hattexp,hdefexp)
+            matches$vperf[matches$season==s] <- -mpe(SRES$hgoal,SRES$vgoal,vattexp,vdefexp)
+
+}
+
+# Build ordered list of matches
+matchlist<-data.frame(season=c(matches$season,matches$season),
+                      date=c(matches$date,matches$date),
+                      team=c(matches$home,matches$visitor),
+                      opp=c(matches$visitor,matches$home),
+                      perf=c(matches$perf,-matches$perf),
+                      nperf=c(matches$hperf,matches$vperf))
+
+# Save the performance metric data
+write.csv(matchlist,"matchlist.csv")
+
+# For full project, do some string matching to maximise correctly overlapping teams
+matchlist$team <- as.character(matchlist$team)
+managers$team <- as.character(managers$team)
+
+teamlist <- intersect(unique(matchlist$team),
+                     unique(managers$team))
+
+# Visualise the performance metric; compare two sides:
+
+team1 <- "Manchester United"
+team2 <- "Manchester City"
+
+x1 <- matchlist$date[matchlist$team==team1&matchlist$season>1945]
+x1num <- as.numeric(
+    as.duration(
+        new_interval(ymd("1945-01-01"),x1)))/3600/24/365.25+1945
+y1 <- matchlist$nperf[matchlist$team==team1&matchlist$season>1945]
+
+x2 <- matchlist$date[matchlist$team==team2&matchlist$season>1945]
+x2num <- as.numeric(
+    as.duration(
+        new_interval(ymd("1945-01-01"),x2)))/3600/24/365.25+1945
+y2 <- matchlist$nperf[matchlist$team==team2&matchlist$season>1945]
+
+plotdata <- data.frame(x=c(x1num,x2num),
+                       y=c(y1,y2),
+                       lo=c(predict(loess(y1~x1num,span=0.1),x1num),predict(loess(y2~x2num,span=0.1),x2num)),
+                       Team=as.factor(c(rep(team1,length(x1)),rep(team2,length(x2)))))
+
+p1 <- ggplot() + 
+    geom_line(data = plotdata, aes(x = x, y = lo, color = Team)) +
+    xlab('Date') +
+    ylab('Loess-smoothed Performance') +
+    scale_color_manual(values=c('cornflower blue', 'red'))
+p1
+ggsave(p1,file="Figure1.png")
+
+#Exclude teams we don't have data for; look at results from 1980 onwards
+manreduced <- managers[managers$role %in% c("Manager","Head Coach") 
+                       &managers$start>ymd("1980-01-01")
+                       &managers$team %in% teamlist,]
+
+matchreduced <- matchlist[matchlist$season > 1979
+                          &matchlist$team %in% teamlist,]
+
+            minpos <- function(x) {
+                  min(x[x > 0])
+            }
+
+pre <- rep(0,length(matchreduced$team))
+post <- rep(0,length(matchreduced$team))
+    
+    for (i in 1:length(matchreduced$team)) {
+        pre[i] <- minpos(
+                as.numeric(
+                    as.duration(
+                        new_interval(
+                            matchreduced$date[i],
+                            manreduced$start[manreduced$team==matchreduced$team[i]])))/3600/24/7)
+        post[i] <- minpos(
+            as.numeric(
+                as.duration(
+                    new_interval(
+                        manreduced$start[manreduced$team==matchreduced$team[i]],
+                        matchreduced$date[i])))/3600/24/7)
+    }
+
+matchreduced$preweeks <- ceiling(pre)
+matchreduced$postweeks <- ceiling(post)
+matchreduced <- matchreduced[pre!=Inf&post!=Inf,]
+
+# Save the manager weeks data
+write.csv(matchreduced,"matchreduced.csv")
+
+mr <- tbl_df(matchreduced)
+grouped_data <- group_by(mr,postweeks)
+plotdata <- summarise(grouped_data,perf=mean(nperf))[1:200,]
+    
+
+p2 <- ggplot(plotdata,aes(x=postweeks,y=perf)) +
+    geom_line() + 
+    stat_smooth(method = "loess", formula = y ~ x, size = 1) +
+    xlab('Weeks Since Manager Appointed') +
+    ylab('Performance')
+ggsave(p2,file="Figure2.png")
+
+```
+
+
+
+
+
+
+
+

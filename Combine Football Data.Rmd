@@ -1,0 +1,556 @@
+---
+    pdf_document: default
+author: "Iain Harlow"
+date: "01/21/2015"
+output:
+    html_document: null
+keep_md: yes
+pdf_document: default
+title: 'Manager League: Attribute Performance Effects'
+---
+    
+```{r}
+library(dplyr)
+library(lubridate)
+library(devtools)
+library(ggplot2)
+library(stringr)
+library(engsoccerdata)
+```
+
+England:
+
+```{r}
+lge <- engsoccerdata2[,c(1,2,3,4,6,7,9)]
+names(lge) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+lge$neutral <- 0
+lge$country <- "England"
+
+# FA Cup:
+fcup <- facup[,c(1,2,3,4,6,7,9)]
+names(fcup) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+fcup$tier <- "fcup"
+tmpvec <- facup$neutral
+fcup$neutral <- 0
+fcup$neutral[tmpvec=="yes"] <- 1
+fcup$country <- "England"
+
+# League Cup:
+setwd("C:/Users/Iain/Google Drive/Blog")
+lcup <- read.csv("League Cup.csv",
+                 header = TRUE,
+                 stringsAsFactors = FALSE,
+                 colClasses = c("Date"="character",
+                                "Hgoal"="integer",
+                                "Vgoal"="integer"))
+lcup <- lcup[,c(3,2,4,7,5,6,1,8)]
+names(lcup) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+lcup$tier <- "lcup"
+lcup$date <- str_sub(lcup$date, end = 10)
+lcup$home <- str_replace_all(lcup$home, "[[:space:]]+", " ")
+lcup$visitor <- str_replace_all(lcup$visitor, "[[:space:]]+", " ")
+lcup$country <- "England"
+
+# Playoffs:
+po <- playoffs[,c(1,2,3,4,6,7,9)]
+names(po) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+po$tier <- "po"
+tmpvec <- playoffs$neutral
+po$neutral <- 0
+po$neutral[tmpvec=="yes"] <- 1
+po$country <- "England"
+
+
+#matches <- tbl_df(rbind(lge,fcup,lcup,po))
+#matches <- matches[complete.cases(matches),]
+#matches$date <- ymd(matches$date)
+```
+
+Euro Leagues Spain, Italy, Germany, Holland:
+
+```{r}
+spain <- spainliga[,c(1,2,3,4,7,8,9)]
+names(spain) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+spain$neutral <- 0
+spain$country <- "Spain"
+
+italy <- italycalcio[,c(1,2,3,4,6,7,8)]
+names(italy) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+italy$neutral <- 0
+italy$country <- "Italy"
+
+germany <- bundesliga[,c(1,2,3,4,6,7,8)]
+names(germany) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+germany$neutral <- 0
+germany$country <- "Germany"
+
+holland <- holland1[,c(1,2,3,4,6,7,8)]
+names(holland) <- c("date","season","home","visitor","hgoal","vgoal","tier")
+holland$neutral <- 0
+holland$country <- "Netherlands"
+
+```
+
+BELGIUM
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/belgium")
+
+# Belgium:
+belgium <- read.csv("B1.csv",
+               header = TRUE,
+               stringsAsFactors = FALSE,
+               colClasses = c("Date"="character",
+                              "FTHG"="integer",
+                              "FTAG"="integer"))
+belgium <- belgium[,c(2,5,3,4,5,6,1,8)]
+names(belgium) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+belgium$season <- 2013
+
+for (i in 1:18) {
+    filename <- paste("B1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    belgium <- rbind(belgium,tempfile)
+}
+
+belgium$tier <- 1
+belgium$home <- str_replace_all(belgium$home, "[[:space:]]+", " ")
+belgium$visitor <- str_replace_all(belgium$visitor, "[[:space:]]+", " ")
+belgium$country <- "Belgium"
+```
+FRANCE:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/france")
+
+france <- read.csv("F1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+france <- france[,c(2,5,3,4,5,6,1,8)]
+names(france) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+france$season <- 2013
+
+for (i in 1:20) {
+    filename <- paste("F1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    france <- rbind(france,tempfile)
+}
+
+france$tier <- 1
+
+france2 <- read.csv("F2.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE,
+                   colClasses = c("Date"="character",
+                                  "FTHG"="integer",
+                                  "FTAG"="integer"))
+france2 <- france2[,c(2,5,3,4,5,6,1,8)]
+names(france2) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+france2$season <- 2013
+
+for (i in 1:17) {
+    filename <- paste("F2 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    france2 <- rbind(france2,tempfile)
+}
+
+france2$tier <- 2
+france <- rbind(france,france2)
+france$home <- str_replace_all(france$home, "[[:space:]]+", " ")
+france$visitor <- str_replace_all(france$visitor, "[[:space:]]+", " ")
+france$country <- "France"
+```
+
+GERMANY:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/germany")
+
+germany <- read.csv("D1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+germany <- germany[,c(2,5,3,4,5,6,1,8)]
+names(germany) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+germany$season <- 2013
+
+for (i in 1:20) {
+    filename <- paste("D1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    germany <- rbind(germany,tempfile)
+}
+
+germany$tier <- 1
+
+germany2 <- read.csv("D2.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE,
+                   colClasses = c("Date"="character",
+                                  "FTHG"="integer",
+                                  "FTAG"="integer"))
+germany2 <- germany2[,c(2,5,3,4,5,6,1,8)]
+names(germany2) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+germany2$season <- 2013
+
+for (i in 1:20) {
+    filename <- paste("D2 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    germany2 <- rbind(germany2,tempfile)
+}
+
+germany2$tier <- 2
+germany <- rbind(germany,germany2)
+germany$home <- str_replace_all(germany$home, "[[:space:]]+", " ")
+germany$visitor <- str_replace_all(germany$visitor, "[[:space:]]+", " ")
+germany$country <- "Germany"
+```
+
+GREECE:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/greece")
+
+greece <- read.csv("G1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+greece <- greece[,c(2,5,3,4,5,6,1,8)]
+names(greece) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+greece$season <- 2013
+
+for (i in 1:19) {
+    filename <- paste("G1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    greece <- rbind(greece,tempfile)
+}
+
+greece$tier <- 1
+greece$home <- str_replace_all(greece$home, "[[:space:]]+", " ")
+greece$visitor <- str_replace_all(greece$visitor, "[[:space:]]+", " ")
+greece$country <- "Greece"
+```
+
+ITALY:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/italy")
+
+italy <- read.csv("I1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+italy <- italy[,c(2,5,3,4,5,6,1,8)]
+names(italy) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+italy$season <- 2013
+
+for (i in 1:20) {
+    filename <- paste("I1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    italy <- rbind(italy,tempfile)
+}
+
+italy$tier <- 1
+
+italy2 <- read.csv("I2.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE,
+                   colClasses = c("Date"="character",
+                                  "FTHG"="integer",
+                                  "FTAG"="integer"))
+italy2 <- italy2[,c(2,5,3,4,5,6,1,8)]
+names(italy2) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+italy2$season <- 2013
+
+for (i in 1:16) {
+    filename <- paste("I2 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    italy2 <- rbind(italy2,tempfile)
+}
+
+italy2$tier <- 2
+italy <- rbind(italy,italy2)
+italy$home <- str_replace_all(italy$home, "[[:space:]]+", " ")
+italy$visitor <- str_replace_all(italy$visitor, "[[:space:]]+", " ")
+italy$country <- "Italy"
+```
+
+PORTUGAL:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/portulgal")
+
+portugal <- read.csv("P1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+portugal <- portugal[,c(2,5,3,4,5,6,1,8)]
+names(portugal) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+portugal$season <- 2013
+
+for (i in 1:19) {
+    filename <- paste("P1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    portugal <- rbind(portugal,tempfile)
+}
+
+portugal$tier <- 1
+portugal$home <- str_replace_all(portugal$home, "[[:space:]]+", " ")
+portugal$visitor <- str_replace_all(portugal$visitor, "[[:space:]]+", " ")
+portugal$country <- "Portugal"
+```
+
+SCOTLAND:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/scotland")
+
+scotland <- read.csv("SC0.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+scotland <- scotland[,c(2,5,3,4,5,6,1,8)]
+names(scotland) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+scotland$season <- 2013
+
+for (i in 1:19) {
+    filename <- paste("SC0 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    scotland <- rbind(scotland,tempfile)
+}
+
+scotland$tier <- 1
+
+scotland2 <- read.csv("SC1.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE,
+                   colClasses = c("Date"="character",
+                                  "FTHG"="integer",
+                                  "FTAG"="integer"))
+scotland2 <- scotland2[,c(2,5,3,4,5,6,1,8)]
+names(scotland2) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+scotland2$season <- 2013
+
+for (i in 1:19) {
+    filename <- paste("SC1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    scotland2 <- rbind(scotland2,tempfile)
+}
+
+scotland2$tier <- 2
+scotland <- rbind(scotland,scotland2)
+scotland$home <- str_replace_all(scotland$home, "[[:space:]]+", " ")
+scotland$visitor <- str_replace_all(scotland$visitor, "[[:space:]]+", " ")
+scotland$country <- "Scotland"
+```
+
+SPAIN:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/spain")
+
+spain <- read.csv("SP1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+spain <- spain[,c(2,5,3,4,5,6,1,8)]
+names(spain) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+spain$season <- 2013
+
+for (i in 1:20) {
+    filename <- paste("SP1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    spain <- rbind(spain,tempfile)
+}
+
+spain$tier <- 1
+
+spain2 <- read.csv("SP2.csv",
+                   header = TRUE,
+                   stringsAsFactors = FALSE,
+                   colClasses = c("Date"="character",
+                                  "FTHG"="integer",
+                                  "FTAG"="integer"))
+spain2 <- spain2[,c(2,5,3,4,5,6,1,8)]
+names(spain2) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+spain2$season <- 2013
+
+for (i in 1:17) {
+    filename <- paste("SP2 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    spain2 <- rbind(spain2,tempfile)
+}
+
+spain2$tier <- 2
+spain <- rbind(spain,spain2)
+spain$home <- str_replace_all(spain$home, "[[:space:]]+", " ")
+spain$visitor <- str_replace_all(spain$visitor, "[[:space:]]+", " ")
+spain$country <- "Spain"
+```
+
+TURKEY:
+
+```{r}
+setwd("C:/Users/Iain/Google Drive/Github/Blog/FootballData/raw-data/turkey")
+
+turkey <- read.csv("T1.csv",
+                    header = TRUE,
+                    stringsAsFactors = FALSE,
+                    colClasses = c("Date"="character",
+                                   "FTHG"="integer",
+                                   "FTAG"="integer"))
+turkey <- turkey[,c(2,5,3,4,5,6,1,8)]
+names(turkey) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+turkey$season <- 2013
+
+for (i in 1:19) {
+    filename <- paste("T1 (",i,").csv",sep="")
+    tempfile <- read.csv(filename,
+                         header = TRUE,
+                         stringsAsFactors = FALSE,
+                         colClasses = c("Date"="character",
+                                        "FTHG"="integer",
+                                        "FTAG"="integer"))
+    tempfile <- tempfile[,c(2,5,3,4,5,6,1,8)]
+    names(tempfile) <- c("date","season","home","visitor","hgoal","vgoal","tier","neutral")
+    tempfile$season <- 2013-i
+    turkey <- rbind(turkey,tempfile)
+}
+
+turkey$tier <- 1
+turkey$home <- str_replace_all(turkey$home, "[[:space:]]+", " ")
+turkey$visitor <- str_replace_all(turkey$visitor, "[[:space:]]+", " ")
+turkey$country <- "Turkey"
+```
+
+Bind the leagues together and add to matches:
+
+```{r}
+imatches <- tbl_df(rbind(belgium,france,germany,greece,italy,portugal,scotland,spain,turkey))
+imatches <- imatches[complete.cases(imatches),]
+imatches$date <- dmy(imatches$date)
+
+```
+
+Save as csv:
+
+```{r}
+write.csv(imatches,"imatches.csv")
+```
